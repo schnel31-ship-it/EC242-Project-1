@@ -1,0 +1,282 @@
+---
+title: "Project 1"
+author: "Devin Schneller, "
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+```{r}
+library(sf)
+library(mapview)
+library(tigris)
+library(tidycensus)
+library(tidyverse)
+library(tmaptools)
+library(lubridate)
+options(progress_enabled = FALSE)
+rats_raw <- read_csv("Rat_sightings.csv", na = c("", "NA", "N/A"))
+```
+```{r}
+# If you get an error that says "All formats failed to parse. No formats
+# found", it's because the mdy_hms function couldn't parse the date. The date
+# variable *should* be in this format: "04/03/2017 12:00:00 AM", but in some
+# rare instances, it might load without the seconds as "04/03/2017 12:00 AM".
+# If there are no seconds, use mdy_hm() instead of mdy_hms().
+rats_clean <- rats_raw %>%
+  rename(created_date = `Created Date`,
+         location_type = `Location Type`,
+         borough = Borough) %>%
+  mutate(created_date = mdy_hms(created_date)) %>%
+  mutate(sighting_year = year(created_date),
+         sighting_month = month(created_date),
+         sighting_day = day(created_date),
+         sighting_weekday = wday(created_date, label = TRUE, abbr = FALSE)) %>%
+  filter(borough != "Unspecified")
+
+head(rats_clean)
+```
+```{r}
+rats_clean <- rats_clean %>%
+  mutate(year_as_chr = as.character(sighting_year)) %>%
+  mutate(day_as_number = round_date(created_date, "day")) %>%
+  mutate(week_as_number = round_date(created_date, "week")) %>%
+  mutate(month_as_number = round_date(created_date, "month")) %>%
+  mutate(year_as_number = round_date(created_date, "year")) %>%
+  mutate(year_as_number = year(year_as_number))
+sick_rat <- data_20d9M %>%
+  filter(Year >2009) %>%
+  rename(year_as_number = Year)
+
+```
+
+
+```{r}
+rats_day<-rats_clean%>%
+  filter(sighting_year < 2026)%>%
+  group_by(day_as_number)%>%
+  summarize(sightings=n()) %>%
+  arrange(desc(sightings))
+rats_day
+
+ggplot(rats_day,aes(x=day_as_number,y=sightings))+
+  geom_line()+
+  geom_point()+
+scale_y_continuous(
+  labels=scales::comma)+
+  labs(
+    title="RatSightingsinNewYorkCitybymonthfrom2010–2025",
+    x="Month",
+    y="NumberofSightings")
+
+rats_week<-rats_clean%>%
+  filter(sighting_year < 2026)%>%
+  group_by(week_as_number)%>%
+  summarize(sightings=n()) %>%
+  arrange(desc(sightings))
+rats_week
+
+ggplot(rats_week,aes(x=week_as_number,y=sightings))+
+  geom_line()+
+  geom_point()+
+scale_y_continuous(
+  labels=scales::comma)+
+  labs(
+    title="RatSightingsinNewYorkCitybymonthfrom2010–2025",
+    x="Month",
+    y="NumberofSightings")
+
+rats_month<-rats_clean%>%
+  filter(sighting_year < 2026)%>%
+  group_by(month_as_number)%>%
+  summarize(sightings=n()) %>%
+  arrange(desc(sightings))
+rats_month
+
+ggplot(rats_month,aes(x=month_as_number,y=sightings))+
+  geom_line()+
+  geom_point()+
+scale_y_continuous(
+  labels=scales::comma)+
+  labs(
+    title="RatSightingsinNewYorkCitybymonthfrom2010–2025",
+    x="Month",
+    y="NumberofSightings")
+```
+
+
+```{r}
+rats_year<-rats_clean%>%
+  filter(sighting_year < 2026)%>%
+  group_by(year_as_number)%>%
+  summarize(sightings=n()/1000) %>%
+  arrange(desc(sightings)) %>%
+  mutate(year_as_number = as.double(year_as_number))
+rats_year
+```
+
+
+```{r}
+sick_year <- left_join(rats_year, sick_rat, "year_as_number")
+sick_year
+sick_year_long <- sick_year %>%
+  pivot_longer(
+    cols = c(sightings, Count),
+    names_to = "type",
+    values_to = "number"
+  )
+sick_year_long
+```
+
+
+```{r}
+ggplot(sick_year_long,
+       aes(x = year_as_number, y = number, color = type, group = type)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  geom_point() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(
+    values = c("sightings" = "red", "Count" = "blue"),
+    labels = c(
+      "sightings" = "Rat sightings (in thousands)",
+      "Count" = "Cases of leptospirosis"
+  )) +
+  labs(
+    title = "Rat Sightings in New York City by Year, 2010–2025",
+    x = "Year",
+    y = "Count",
+    color = element_blank(), 
+    subtitle = "Linear Regression Lines Appear as Dashed"
+  ) +
+  theme_minimal() +
+  theme(legend)
+```
+
+```{r}
+ggplot(sick_year,
+       aes(x = Count, y = sightings)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed") +
+  geom_point() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(
+    values = c("sightings" = "red", "Count" = "blue"),
+    labels = c(
+      "sightings" = "Rat sightings (in thousands)",
+      "Count" = "Cases of leptospirosis"
+  )) +
+  labs(
+    title = "Rat Sightings in New York City by Year, 2010–2025",
+    x = "Year",
+    y = "Count",
+    color = element_blank(), 
+    subtitle = "Linear Regression Lines Appear as Dashed"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+
+rats_borough <- rats_clean %>%
+  filter(sighting_year < 2026) %>%
+  group_by(borough, sighting_year) %>%
+  summarize(sightings = n()/100) %>%
+  arrange(desc(sightings))
+#  mutate(
+#    mayor = case_when(
+#      sighting_year >= 2010 & sighting_year <= 2013 ~ "Michael Bloomberg",
+#      sighting_year >= 2014 & sighting_year <= 2021 ~ "Bill de Blasio",
+#      sighting_year >= 2022 & sighting_year <= 2025 ~ "Eric Adams")
+#    )
+
+
+
+rats_borough
+
+color_blind <- c(
+  "#0072B2",  # Blue
+  "#E69F00",  # Orange
+  "#009E73",  # Green
+  "#D55E00",  # Vermillion
+  "#CC79A7",  # Purple/Pink
+  "#56B4E9",  # Sky blue
+  "#F0E442",  # Yellow
+  "#000000",  # Black
+  "#117733",  # Dark green
+  "#332288",  # Dark purple
+  "#88CCEE",  # Light blue
+  "#DDCC77",  # Tan
+  "#CC6677",  # Rose
+  "#44AA99",  # Teal
+  "#AA4499",  # Magenta
+  "#999933"   # Olive
+)
+
+```
+
+```{r}
+## Non grouped graph showing Rat Sightings across Year and Borough
+ggplot(rats_borough,
+       aes(x = sightings, y = as.character(sighting_year), fill = borough)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  
+  scale_fill_manual(values=color_blind) +
+  labs(
+    title = "Total Rats Sighting by Borough",
+    subtitle = "2010–2025",
+    y = "Location Type",
+    x = "Number of Sightings") +
+  scale_x_continuous(breaks = c(5000,10000,15000,20000,25000)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+```{r}
+## Graph showing Rat Sightings across Year and Borough Grouped by Mayor
+
+
+ggplot(rats_borough,
+       aes(x = sightings, 
+           y = as.character(sighting_year), 
+           fill = borough)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  coord_flip() +
+  scale_fill_manual(values = color_blind) +
+  labs(
+    title = "Total Rat Sightings Across Borough and Year",
+    subtitle = "Grouped by Mayors of New York",
+    y = "Year",
+    x = "Number of Sightings") +
+  scale_x_continuous(
+    breaks = c(5000, 10000, 15000, 20000, 25000),
+    labels=scales::comma) +
+  geom_hline(
+    yintercept = c(4.5, 12.5),
+    linewidth = 1) +
+  theme_minimal() +
+  annotate("text", x = 27000, y = 2.5, 
+         label = "M. Bloomberg",
+         fontface = "bold") +
+  annotate("text", x = 27000, y = 8.5, 
+         label = "Bill de Blasio",
+         fontface = "bold") +
+  annotate("text", x = 27000, y = 15, 
+         label = "Eric Adams",
+         fontface = "bold") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+
+
+This chart shows the rise in rat sightings across years and boroughs. Brooklyn and Manhattan make up the majority of the rat sightings, while Staten Island not accounted for very few and stayed relatively stable over time. Across boroughs, there was a steady overall increase in sightings from 2014 to 2017, around the time that Bill De Blasio became mayor, and decreased slightly every year until 2020. In spring of 2020, the Covid shutdown closed all but essential businesses in NYC, which likely had a significant effect on the number of rat sightings in New York. Then shutdowns and restrictions were lifted by the summer of 2021 and as a result, rat sightings spiked. 2022 had the highest number of rat sightings which peaked to above 25,000 a year, and was around the time that Eric Adams became mayor of NYC. From 2022 on, there was a decrease in rat sightings in every Borough except Queens that returned the total number of rat sightings to the pre-covid highest amount in 2017. 2026 has shown a further decline in rat sightings, though there the year is not over so the total number is still rising.
+
+
+
+```{r}
+
+```
+
+GeoSpatial Data
